@@ -28,85 +28,88 @@ def analyze_string(input_str):
 
 # --- API Endpoints ---
 
-# NEW: Combined function for /strings route
-@app.route('/strings', methods=['POST', 'GET'])
-def handle_strings():
-    # Logic for creating a new string
-    if request.method == 'POST':
-        if not request.json or 'value' not in request.json:
-            return jsonify({"error": "Invalid request body or missing 'value' field"}), 400
-        
-        value = request.json['value']
-        if not isinstance(value, str):
-            return jsonify({"error": "Invalid data type for 'value', must be a string"}), 422
-        if value in strings_db:
-            return jsonify({"error": "String already exists in the system"}), 409
-
-        properties = analyze_string(value)
-        new_entry = {
-            "id": properties["sha256_hash"],
-            "value": value,
-            "properties": properties,
-            "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
-        }
-        strings_db[value] = new_entry
-        return jsonify(new_entry), 201
+# FIX: Separate function for POST /strings
+@app.route('/strings', methods=['POST'])
+def create_string():
+    """Creates a new string entry."""
+    if not request.json or 'value' not in request.json:
+        return jsonify({"error": "Invalid request body or missing 'value' field"}), 400
     
-    # Logic for getting all strings with filters
-    if request.method == 'GET':
-        args = request.args
-        filters_applied = {}
-        filtered_data = list(strings_db.values())
+    value = request.json['value']
+    if not isinstance(value, str):
+        return jsonify({"error": "Invalid data type for 'value', must be a string"}), 422
+    if value in strings_db:
+        return jsonify({"error": "String already exists in the system"}), 409
 
-        try:
-            if 'is_palindrome' in args:
-                is_palindrome_filter = args['is_palindrome'].lower() == 'true'
-                filters_applied['is_palindrome'] = is_palindrome_filter
-                filtered_data = [s for s in filtered_data if s['properties']['is_palindrome'] == is_palindrome_filter]
-            if 'min_length' in args:
-                min_len = int(args['min_length'])
-                filters_applied['min_length'] = min_len
-                filtered_data = [s for s in filtered_data if s['properties']['length'] >= min_len]
-            if 'max_length' in args:
-                max_len = int(args['max_length'])
-                filters_applied['max_length'] = max_len
-                filtered_data = [s for s in filtered_data if s['properties']['length'] <= max_len]
-            if 'word_count' in args:
-                wc = int(args['word_count'])
-                filters_applied['word_count'] = wc
-                filtered_data = [s for s in filtered_data if s['properties']['word_count'] == wc]
-            if 'contains_character' in args:
-                char = args['contains_character']
-                if len(char) != 1: raise ValueError("contains_character must be a single character")
-                filters_applied['contains_character'] = char
-                filtered_data = [s for s in filtered_data if char in s['value']]
-        except (ValueError, TypeError) as e:
-            return jsonify({"error": f"Invalid query parameter value: {e}"}), 400
+    properties = analyze_string(value)
+    new_entry = {
+        "id": properties["sha256_hash"],
+        "value": value,
+        "properties": properties,
+        "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
+    }
+    strings_db[value] = new_entry
+    return jsonify(new_entry), 201
 
-        response = { "data": filtered_data, "count": len(filtered_data), "filters_applied": filters_applied }
-        return jsonify(response), 200
+# FIX: Separate function for GET /strings
+@app.route('/strings', methods=['GET'])
+def get_strings_with_filters():
+    """Gets all strings, with optional filters."""
+    args = request.args
+    filters_applied = {}
+    filtered_data = list(strings_db.values())
 
-# NEW: Combined function for /strings/<string_value> route
-@app.route('/strings/<string_value>', methods=['GET', 'DELETE'])
-def handle_specific_string(string_value):
-    # Logic for getting a specific string
-    if request.method == 'GET':
-        if string_value not in strings_db:
-            return jsonify({"error": "String does not exist in the system"}), 404
-        return jsonify(strings_db[string_value]), 200
+    try:
+        if 'is_palindrome' in args:
+            is_palindrome_filter = args['is_palindrome'].lower() == 'true'
+            filters_applied['is_palindrome'] = is_palindrome_filter
+            filtered_data = [s for s in filtered_data if s['properties']['is_palindrome'] == is_palindrome_filter]
+        if 'min_length' in args:
+            min_len = int(args['min_length'])
+            filters_applied['min_length'] = min_len
+            filtered_data = [s for s in filtered_data if s['properties']['length'] >= min_len]
+        if 'max_length' in args:
+            max_len = int(args['max_length'])
+            filters_applied['max_length'] = max_len
+            filtered_data = [s for s in filtered_data if s['properties']['length'] <= max_len]
+        if 'word_count' in args:
+            wc = int(args['word_count'])
+            filters_applied['word_count'] = wc
+            filtered_data = [s for s in filtered_data if s['properties']['word_count'] == wc]
+        if 'contains_character' in args:
+            char = args['contains_character']
+            if len(char) != 1: raise ValueError("contains_character must be a single character")
+            filters_applied['contains_character'] = char
+            filtered_data = [s for s in filtered_data if char in s['value']]
+    except (ValueError, TypeError) as e:
+        return jsonify({"error": f"Invalid query parameter value: {e}"}), 400
 
-    # Logic for deleting a specific string
-    if request.method == 'DELETE':
-        if string_value not in strings_db:
-            return jsonify({"error": "String does not exist in the system"}), 404
-        del strings_db[string_value]
-        return '', 204
+    response = { "data": filtered_data, "count": len(filtered_data), "filters_applied": filters_applied }
+    return jsonify(response), 200
+
+# FIX: Separate function for GET /strings/<string_value>
+@app.route('/strings/<string_value>', methods=['GET'])
+def get_specific_string(string_value):
+    """Gets a specific string by its value."""
+    if string_value not in strings_db:
+        return jsonify({"error": "String does not exist in the system"}), 404
+    return jsonify(strings_db[string_value]), 200
+
+# FIX: Separate function for DELETE /strings/<string_value>
+@app.route('/strings/<string_value>', methods=['DELETE'])
+def delete_specific_string(string_value):
+    """Deletes a specific string by its value."""
+    if string_value not in strings_db:
+        return jsonify({"error": "String does not exist in the system"}), 404
+    del strings_db[string_value]
+    return '', 204
 
 # Natural Language Filtering (No changes needed here)
 @app.route('/strings/filter-by-natural-language', methods=['GET'])
 def filter_natural_language():
     query = request.args.get('query', '').lower()
     if not query: return jsonify({"error": "Missing 'query' parameter"}), 400
+    
     parsed_filters = {}
     if 'palindrome' in query or 'palindromic' in query: parsed_filters['is_palindrome'] = True
     if 'single word' in query: parsed_filters['word_count'] = 1
@@ -135,7 +138,6 @@ def filter_natural_language():
     return jsonify(response), 200
 
 if __name__ == '__main__':
-    # Using the PORT environment variable is good practice for deployment
     import os
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
